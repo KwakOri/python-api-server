@@ -1,0 +1,36 @@
+# fly.toml - Fly.io 배포 설정
+# 참고: flyctl launch 실행 후 앱 이름을 업데이트하세요
+
+app = "exam-alignment-api"
+primary_region = "nrt"  # Tokyo (한국과 가까운 리전)
+
+[build]
+  # Dockerfile 기반 빌드
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0  # 무료 티어: 트래픽 없을 때 자동 정지
+  processes = ["app"]
+
+[[http_service.checks]]
+  grace_period = "10s"
+  interval = "30s"
+  method = "GET"
+  timeout = "5s"
+  path = "/health"
+
+[env]
+  # 환경 변수 설정 (필요 시)
+  # LOG_LEVEL = "info"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512  # 이미지 처리를 위해 최소 512MB 권장
+
+# 메모리 부족 시 증가 고려
+# [[vm]]
+#   memory_mb = 1024
