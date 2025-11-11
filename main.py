@@ -8,7 +8,8 @@ from fastapi.responses import JSONResponse
 import logging
 import sys
 
-from app.routers import align
+from app.routers import align, grade
+from app.core.auth import APIKeyMiddleware
 
 # 로깅 설정
 logging.basicConfig(
@@ -32,21 +33,35 @@ app = FastAPI(
     * **이미지 정렬**: SIFT 또는 Contour 방식으로 시험지 이미지 정렬
     * **배치 처리**: 여러 이미지를 한 번에 처리
     * **이미지 품질 개선**: CLAHE 및 노이즈 제거
-    * **OMR 채점**: (추후 구현 예정)
+    * **OMR 마킹 검출**: 45문항 5지선다형 답안 자동 검출
+    * **자동 채점**: 정답과 비교하여 자동 채점 및 통계 제공
 
     ## 정렬 방식
 
     ### SIFT (Scale-Invariant Feature Transform)
     - 높은 정확도
-    - 템플릿 이미지 필요
+    - 템플릿 이미지 자동 사용 (omr_card.jpg)
     - 특징점 매칭 기반
     - 회전, 크기, 왜곡에 강함
 
     ### Contour (외곽선 검출)
     - 빠른 처리 속도
-    - 템플릿 선택사항
+    - 템플릿 불필요
     - 외곽선 기반
     - 깔끔한 배경의 스캔본에 적합
+
+    ## OMR 채점
+
+    ### 지원 형식
+    - 총 45문항 (1열: 1-20, 2열: 21-34, 3열: 35-45)
+    - 문항당 5개 선택지
+    - 퍼센트 기반 ROI 좌표 시스템
+
+    ### 기능
+    - 마킹 자동 검출 (픽셀 밀도 분석)
+    - 중복 마킹 처리
+    - 무응답 검출
+    - 정답률 통계 제공
     """,
     version="1.0.0",
     docs_url="/docs",
@@ -62,8 +77,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# API 키 인증 미들웨어 등록
+app.add_middleware(APIKeyMiddleware)
+
 # 라우터 등록
 app.include_router(align.router)
+app.include_router(grade.router)
 
 
 @app.get("/")
@@ -80,11 +99,22 @@ async def root():
             "redoc": "/redoc",
             "health": "/health",
             "align": "/api/align",
-            "align_batch": "/api/align/batch"
+            "align_batch": "/api/align/batch",
+            "grade_detect": "/api/grade/detect",
+            "grade": "/api/grade",
+            "grade_batch": "/api/grade/batch"
         },
-        "methods": {
-            "sift": "SIFT + Homography (고정확도, 템플릿 필요)",
-            "contour": "Contour Detection (고속, 템플릿 선택)"
+        "features": {
+            "alignment": {
+                "sift": "SIFT + Homography (고정확도, 템플릿 자동 사용)",
+                "contour": "Contour Detection (고속, 템플릿 불필요)"
+            },
+            "grading": {
+                "total_questions": 45,
+                "options_per_question": 5,
+                "auto_detect": "마킹 자동 검출",
+                "auto_grade": "정답 비교 자동 채점"
+            }
         }
     }
 

@@ -5,11 +5,15 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import Response
 from typing import Optional
 import logging
+from pathlib import Path
 
 from app.core.image_utils import align_scan_to_template
 
 # 로거 설정
 logger = logging.getLogger(__name__)
+
+# 기본 템플릿 이미지 경로
+DEFAULT_TEMPLATE_PATH = Path(__file__).parent.parent.parent / "omr_card.jpg"
 
 # 라우터 생성
 router = APIRouter(
@@ -43,7 +47,7 @@ async def align_image(
 
     **Parameters:**
     - **scan**: 스캔된 시험지 이미지 파일 (필수)
-    - **template**: 기준 템플릿 이미지 파일 (SIFT 방식 사용 시 필수)
+    - **template**: 기준 템플릿 이미지 파일 (선택사항, 미제공 시 omr_card.jpg 사용)
     - **method**: 정렬 방식 ('sift' 또는 'contour', 기본값: 'sift')
     - **enhance**: 이미지 품질 개선 여부 (기본값: true)
     - **return_image**: true이면 이미지 바이너리를 반환, false이면 JSON 메타데이터 반환
@@ -53,8 +57,8 @@ async def align_image(
     - return_image=true: PNG 이미지 바이너리
 
     **Methods:**
-    - **sift**: SIFT + FLANN + Homography (높은 정확도, 템플릿 필요)
-    - **contour**: 외곽선 검출 + 투시 변환 (빠른 속도, 템플릿 선택사항)
+    - **sift**: SIFT + FLANN + Homography (높은 정확도, 템플릿 자동 사용)
+    - **contour**: 외곽선 검출 + 투시 변환 (빠른 속도, 템플릿 불필요)
     """
     try:
         # 파일 검증
@@ -67,28 +71,31 @@ async def align_image(
         # 스캔 이미지 읽기
         scan_bytes = await scan.read()
 
-        # 템플릿 이미지 읽기 (있는 경우)
+        # 템플릿 이미지 읽기
         template_bytes = None
         if template:
+            # 사용자가 템플릿을 제공한 경우
             if not template.content_type or not template.content_type.startswith("image/"):
                 raise HTTPException(
                     status_code=400,
                     detail="template 파라미터는 이미지 파일이어야 합니다"
                 )
             template_bytes = await template.read()
+        elif method == "sift":
+            # SIFT 방식이고 템플릿이 없으면 기본 템플릿(omr_card.jpg) 사용
+            if not DEFAULT_TEMPLATE_PATH.exists():
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"기본 템플릿 파일을 찾을 수 없습니다: {DEFAULT_TEMPLATE_PATH}"
+                )
+            template_bytes = DEFAULT_TEMPLATE_PATH.read_bytes()
+            logger.info(f"기본 템플릿 사용: {DEFAULT_TEMPLATE_PATH}")
 
         # 정렬 방식 검증
         if method not in ["sift", "contour"]:
             raise HTTPException(
                 status_code=400,
                 detail="method는 'sift' 또는 'contour'여야 합니다"
-            )
-
-        # SIFT 방식일 때 템플릿 필수 확인
-        if method == "sift" and template_bytes is None:
-            raise HTTPException(
-                status_code=400,
-                detail="SIFT 방식에는 template 이미지가 필요합니다"
             )
 
         # 이미지 정렬 수행
@@ -145,25 +152,28 @@ async def align_images_batch(
 
     **Parameters:**
     - **scans**: 스캔된 시험지 이미지 파일들 (여러 개)
-    - **template**: 기준 템플릿 이미지 파일
-    - **method**: 정렬 방식 ('sift' 또는 'contour')
+    - **template**: 기준 템플릿 이미지 파일 (선택사항, 미제공 시 omr_card.jpg 사용)
+    - **method**: 정렬 방식 ('sift' 또는 'contour', 기본값: 'sift')
     - **enhance**: 이미지 품질 개선 여부
 
     **Returns:**
     - JSON 형식의 배치 처리 결과
     """
     try:
-        # 템플릿 이미지 읽기 (있는 경우)
+        # 템플릿 이미지 읽기
         template_bytes = None
         if template:
+            # 사용자가 템플릿을 제공한 경우
             template_bytes = await template.read()
-
-        # SIFT 방식일 때 템플릿 필수 확인
-        if method == "sift" and template_bytes is None:
-            raise HTTPException(
-                status_code=400,
-                detail="SIFT 방식에는 template 이미지가 필요합니다"
-            )
+        elif method == "sift":
+            # SIFT 방식이고 템플릿이 없으면 기본 템플릿(omr_card.jpg) 사용
+            if not DEFAULT_TEMPLATE_PATH.exists():
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"기본 템플릿 파일을 찾을 수 없습니다: {DEFAULT_TEMPLATE_PATH}"
+                )
+            template_bytes = DEFAULT_TEMPLATE_PATH.read_bytes()
+            logger.info(f"배치 처리에서 기본 템플릿 사용: {DEFAULT_TEMPLATE_PATH}")
 
         results = []
         for idx, scan in enumerate(scans):

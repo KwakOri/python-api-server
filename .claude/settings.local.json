@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pyenv versions:*)",
+      "Bash(pyenv version:*)",
+      "Bash(pyenv local:*)",
+      "Bash(pip --version:*)",
+      "Bash(pip install:*)",
+      "Bash(tree:*)",
+      "Bash(curl:*)",
+      "Bash(python -m json.tool:*)",
+      "Bash(python:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
