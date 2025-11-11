@@ -142,10 +142,12 @@ cython_debug/
 
 # Project specific
 template.png
-*.jpg
-*.jpeg
-*.png
-!docs/**/*.png
 logs/
 tmp/
 temp/
+
+# Test files (ignore generated images)
+samples/*.png
+samples/*.jpg
+samples/*.jpeg
+test_results/
