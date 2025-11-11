@@ -20,6 +20,12 @@ logging.basicConfig(
     ]
 )
 
+# 헬스체크 로그 필터 추가
+from app.core.logging_config import HealthCheckFilter
+
+# uvicorn.access 로거에 필터 추가 (헬스체크 로그 제외)
+logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
+
 logger = logging.getLogger(__name__)
 
 # FastAPI 앱 생성

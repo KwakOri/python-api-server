@@ -145,6 +145,7 @@ template.png
 *.jpg
 *.jpeg
 *.png
+!omr_card.jpg
 !docs/**/*.png
 logs/
 tmp/
