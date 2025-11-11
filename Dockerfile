@@ -21,12 +21,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 애플리케이션 코드 복사
 COPY . .
 
-# 포트 노출
+# 포트 노출 (Render는 동적 PORT 환경변수 사용)
 EXPOSE 8080
+
+# 환경 변수 기본값 설정
+ENV PORT=8080
 
 # 헬스체크 설정
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8080/health')" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT}/health')" || exit 1
 
-# Uvicorn으로 FastAPI 앱 실행
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Uvicorn으로 FastAPI 앱 실행 (Render의 PORT 환경변수 사용)
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT}

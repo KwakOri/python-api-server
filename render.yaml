@@ -1,0 +1,29 @@
+services:
+  # 시험지 정렬 및 채점 API 서버
+  - type: web
+    name: zuku-exam-server
+    runtime: docker
+    region: singapore  # 또는 oregon, frankfurt 등 원하는 리전
+    plan: free  # free, starter, standard 등
+
+    # Docker 빌드 설정
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+
+    # 환경 변수 설정
+    envVars:
+      - key: API_KEY
+        sync: false  # 대시보드에서 수동 설정
+      - key: ENVIRONMENT
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+
+    # 헬스체크 경로
+    healthCheckPath: /health
+
+    # 자동 배포 설정
+    autoDeploy: true
+
+    # 빌드 필터 (특정 브랜치만 배포)
+    branch: main
