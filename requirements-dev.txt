@@ -1,0 +1,12 @@
+# 로컬 개발 환경용 추가 패키지
+# 사용법: pip install -r requirements.txt -r requirements-dev.txt
+
+# 메모리 모니터링
+psutil==5.9.8
+
+# 로컬 개발용 (GUI 있는 환경)
+# opencv-python==4.9.0.80
+# opencv-contrib-python==4.9.0.80
+
+# 디버깅 및 테스트
+flask==3.1.2
