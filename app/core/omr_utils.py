@@ -83,7 +83,7 @@ def is_bubble_marked(
     y: int,
     width: int,
     height: int,
-    threshold: float = 0.35
+    threshold: float = 0.45
 ) -> Tuple[bool, float]:
     """
     특정 버블 영역이 마킹되었는지 판단
@@ -91,7 +91,7 @@ def is_bubble_marked(
     Args:
         img: 그레이스케일 이미지
         x, y, width, height: 버블 ROI 좌표
-        threshold: 마킹 판단 임계값 (0.0 ~ 1.0, 낮을수록 민감)
+        threshold: 마킹 판단 임계값 (0.0 ~ 1.0, 낮을수록 민감, 기본값: 0.45)
 
     Returns:
         (마킹 여부, 어두움 비율)
@@ -117,14 +117,14 @@ def is_bubble_marked(
 
 def detect_bubbles(
     img: np.ndarray,
-    threshold: float = 0.35
+    threshold: float = 0.45
 ) -> Dict[int, Optional[int]]:
     """
     OMR 답안지에서 마킹된 답안 검출
 
     Args:
         img: 정렬된 답안지 이미지 (컬러 또는 그레이스케일)
-        threshold: 마킹 판단 임계값 (기본값: 0.35)
+        threshold: 마킹 판단 임계값 (기본값: 0.45)
 
     Returns:
         문제 번호를 키로, 마킹된 선택지를 값으로 하는 딕셔너리
@@ -142,12 +142,15 @@ def detect_bubbles(
     # 45개 문제 순회
     for question in range(1, 46):
         marked_options = []
+        all_densities = []  # 모든 선택지의 어두움 비율 저장
 
         # 5개 선택지 순회
         for option in range(1, 6):
             try:
                 x, y, width, height = get_bubble_roi(img_height, img_width, question, option)
                 is_marked, density = is_bubble_marked(gray, x, y, width, height, threshold)
+
+                all_densities.append((option, density))
 
                 if is_marked:
                     marked_options.append((option, density))
@@ -162,12 +165,19 @@ def detect_bubbles(
         elif len(marked_options) == 1:
             # 정상 마킹
             answers[question] = marked_options[0][0]
+            logger.debug(f"문제 {question}: {marked_options[0][0]}번 마킹 (어두움: {marked_options[0][1]:.3f})")
         else:
             # 중복 마킹 - 가장 어두운 것 선택 (또는 None 처리 가능)
             marked_options.sort(key=lambda x: x[1], reverse=True)
             answers[question] = marked_options[0][0]
-            logger.warning(f"문제 {question}: 중복 마킹 감지 ({[m[0] for m in marked_options]}), "
-                          f"{marked_options[0][0]}번을 선택했습니다.")
+
+            # 중복 마킹된 선택지들의 어두움 비율 표시
+            marked_details = ", ".join([f"{opt}번:{density:.3f}" for opt, density in marked_options])
+            # 모든 선택지의 어두움 비율 표시
+            all_details = ", ".join([f"{opt}:{density:.3f}" for opt, density in all_densities])
+
+            logger.warning(f"문제 {question}: 중복 마킹 감지 - 마킹됨:[{marked_details}] | "
+                          f"전체:[{all_details}] | 선택: {marked_options[0][0]}번")
 
     return answers
 
@@ -175,7 +185,7 @@ def detect_bubbles(
 def grade_omr_sheet(
     img: np.ndarray,
     answer_key: List[int],
-    threshold: float = 0.35,
+    threshold: float = 0.45,
     score_per_question: float = 1.0
 ) -> Dict[str, Any]:
     """
@@ -184,7 +194,7 @@ def grade_omr_sheet(
     Args:
         img: 정렬된 OMR 답안지 이미지
         answer_key: 정답 리스트 [1, 3, 2, 4, ...] (1-indexed, 45개)
-        threshold: 마킹 판단 임계값 (기본값: 0.35)
+        threshold: 마킹 판단 임계값 (기본값: 0.45)
         score_per_question: 문제당 배점 (기본값: 1.0)
 
     Returns:

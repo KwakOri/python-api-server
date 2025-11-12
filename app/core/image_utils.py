@@ -8,14 +8,14 @@ from PIL import Image
 import io
 
 
-def bytes_to_cv2(image_bytes: bytes, max_dimension: int = 800) -> np.ndarray:
+def bytes_to_cv2(image_bytes: bytes, max_dimension: int = 1200) -> np.ndarray:
     """
     바이트 데이터를 OpenCV 이미지로 변환
     메모리 절약을 위해 큰 이미지는 자동으로 리사이즈
 
     Args:
         image_bytes: 이미지 바이트 데이터
-        max_dimension: 최대 이미지 크기 (기본값: 800px, 512MB 메모리 극한 최적화)
+        max_dimension: 최대 이미지 크기 (기본값: 1200px)
 
     Returns:
         OpenCV 이미지 (numpy array)
@@ -69,7 +69,7 @@ def align_with_sift(
     template_img: np.ndarray,
     ratio_threshold: float = 0.7,
     min_good_matches: int = 10,
-    max_features: int = 150
+    max_features: int = 300
 ) -> Tuple[Optional[np.ndarray], int]:
     """
     SIFT + FLANN + Homography를 이용한 이미지 정렬
@@ -79,7 +79,7 @@ def align_with_sift(
         template_img: 기준 템플릿 이미지
         ratio_threshold: Lowe's ratio test 임계값 (기본값: 0.7)
         min_good_matches: 최소 유효 매칭 수 (기본값: 10)
-        max_features: 최대 특징점 수 (기본값: 150, 512MB 메모리 극한 최적화)
+        max_features: 최대 특징점 수 (기본값: 300, 1200px 이미지에 적합)
 
     Returns:
         (정렬된 이미지, 매칭 개수) 튜플. 실패 시 (None, 0)
@@ -88,7 +88,7 @@ def align_with_sift(
     gray_scan = cv2.cvtColor(scan_img, cv2.COLOR_BGR2GRAY)
     gray_template = cv2.cvtColor(template_img, cv2.COLOR_BGR2GRAY)
 
-    # SIFT 특징점 검출 (150개로 제한하여 극한 메모리 절약)
+    # SIFT 특징점 검출 (300개로 증가하여 1200px 이미지에 최적화)
     sift = cv2.SIFT_create(nfeatures=max_features)
     kp1, des1 = sift.detectAndCompute(gray_scan, None)
     kp2, des2 = sift.detectAndCompute(gray_template, None)
@@ -159,16 +159,16 @@ def order_points(pts: np.ndarray) -> np.ndarray:
 
 def align_with_contour(
     scan_img: np.ndarray,
-    target_width: int = 800,
-    target_height: int = 1131
+    target_width: int = 1200,
+    target_height: int = 1697
 ) -> Optional[np.ndarray]:
     """
     외곽선 검출을 이용한 이미지 정렬
 
     Args:
         scan_img: 스캔된 이미지
-        target_width: 목표 이미지 너비 (기본값: 800, A4 비율)
-        target_height: 목표 이미지 높이 (기본값: 1131, A4 비율)
+        target_width: 목표 이미지 너비 (기본값: 1200, A4 비율)
+        target_height: 목표 이미지 높이 (기본값: 1697, A4 비율)
 
     Returns:
         정렬된 이미지. 실패 시 None
@@ -303,8 +303,8 @@ def align_scan_to_template(
             template_img = bytes_to_cv2(template_bytes)
             h, w = template_img.shape[:2]
         else:
-            # 기본 A4 비율 (300 DPI 기준)
-            w, h = 800, 1131
+            # 기본 A4 비율
+            w, h = 1200, 1697
 
         aligned_img = align_with_contour(scan_img, w, h)
 
