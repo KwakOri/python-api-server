@@ -1,11 +1,18 @@
 """
 메모리 사용량 모니터링 유틸리티
 """
-import psutil
 import logging
 from typing import Dict
 
 logger = logging.getLogger(__name__)
+
+# psutil을 선택적으로 import (서버 환경에서 없을 수 있음)
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
+    logger.warning("psutil을 사용할 수 없습니다. 메모리 모니터링이 비활성화됩니다.")
 
 
 def get_memory_usage() -> Dict[str, float]:
@@ -20,6 +27,9 @@ def get_memory_usage() -> Dict[str, float]:
             "percent": 시스템 메모리 사용률 (%)
         }
     """
+    if not PSUTIL_AVAILABLE:
+        return {"rss_mb": 0.0, "vms_mb": 0.0, "percent": 0.0}
+
     process = psutil.Process()
     memory_info = process.memory_info()
 
@@ -37,6 +47,10 @@ def log_memory_usage(prefix: str = ""):
     Args:
         prefix: 로그 메시지 접두사
     """
+    if not PSUTIL_AVAILABLE:
+        logger.debug(f"{prefix}메모리 모니터링 비활성화 (psutil 없음)")
+        return {"rss_mb": 0.0, "vms_mb": 0.0, "percent": 0.0}
+
     memory = get_memory_usage()
     message = f"{prefix}메모리 사용량 - RSS: {memory['rss_mb']}MB, VMS: {memory['vms_mb']}MB, 사용률: {memory['percent']}%"
     logger.info(message)
@@ -50,6 +64,9 @@ def get_system_memory() -> Dict[str, float]:
     Returns:
         시스템 메모리 정보 딕셔너리
     """
+    if not PSUTIL_AVAILABLE:
+        return {"total_mb": 0.0, "available_mb": 0.0, "used_mb": 0.0, "percent": 0.0}
+
     mem = psutil.virtual_memory()
 
     return {
@@ -64,6 +81,10 @@ def log_system_memory():
     """
     시스템 전체 메모리 정보를 로그에 출력
     """
+    if not PSUTIL_AVAILABLE:
+        logger.debug("메모리 모니터링 비활성화 (psutil 없음)")
+        return {"total_mb": 0.0, "available_mb": 0.0, "used_mb": 0.0, "percent": 0.0}
+
     memory = get_system_memory()
     message = (
         f"시스템 메모리 - "
