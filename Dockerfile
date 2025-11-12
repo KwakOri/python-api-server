@@ -24,10 +24,18 @@ EXPOSE 8080
 
 # 환경 변수 기본값 설정
 ENV PORT=8080
+# Python 메모리 최적화
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONOPTIMIZE=1
+# 가비지 컬렉션 적극적으로 수행
+ENV MALLOC_TRIM_THRESHOLD_=100000
 
 # 헬스체크 설정
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT}/health')" || exit 1
 
-# Uvicorn으로 FastAPI 앱 실행 (Render의 PORT 환경변수 사용)
-CMD uvicorn main:app --host 0.0.0.0 --port ${PORT}
+# Uvicorn으로 FastAPI 앱 실행 (메모리 최적화 설정)
+# --workers 1: 512MB 메모리 제한에서 단일 워커만 사용
+# --limit-concurrency 10: 동시 요청 수 제한으로 메모리 폭발 방지
+# --timeout-keep-alive 30: Keep-alive 타임아웃 단축
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT} --workers 1 --limit-concurrency 10 --timeout-keep-alive 30

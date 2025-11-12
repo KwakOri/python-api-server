@@ -10,6 +10,8 @@ import sys
 
 from app.routers import align, grade
 from app.core.auth import APIKeyMiddleware
+from app.middleware.memory_middleware import MemoryLoggingMiddleware
+from app.core.memory_monitor import log_system_memory
 
 # 로깅 설정
 logging.basicConfig(
@@ -83,8 +85,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# API 키 인증 미들웨어 등록
+# 미들웨어 등록
 app.add_middleware(APIKeyMiddleware)
+app.add_middleware(MemoryLoggingMiddleware)
 
 # 라우터 등록
 app.include_router(align.router)
@@ -162,6 +165,9 @@ async def startup_event():
     logger.info("시험지 정렬 및 채점 API 서버 시작")
     logger.info("=" * 50)
     logger.info("API 문서: http://localhost:8080/docs")
+    logger.info("=" * 50)
+    # 시스템 메모리 정보 출력
+    log_system_memory()
     logger.info("=" * 50)
 
 

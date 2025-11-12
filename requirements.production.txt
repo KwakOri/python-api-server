@@ -4,8 +4,8 @@ uvicorn[standard]==0.27.0
 python-multipart==0.0.6
 
 # Image Processing (Headless versions for production)
+# opencv-contrib 제거: SIFT는 OpenCV 4.x 기본 패키지에 포함됨 (메모리 100-150MB 절약)
 opencv-python-headless==4.9.0.80
-opencv-contrib-python-headless==4.9.0.80
 numpy==1.26.3
 Pillow==10.2.0
 

@@ -5,9 +5,11 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from typing import Optional, List
 import logging
 import json
+import gc
 
 from app.core.image_utils import bytes_to_cv2, align_scan_to_template
 from app.core.omr_utils import detect_bubbles, grade_omr_sheet
+from app.core.memory_monitor import log_memory_usage
 from pathlib import Path
 
 # 로거 설정
@@ -55,12 +57,16 @@ async def detect_answers(
     **Returns:**
     - JSON 형식의 검출 결과
     """
+    scan_bytes = None
+    template_bytes = None
+    aligned_bytes = None
+    aligned_img = None
+
     try:
         # 스캔 이미지 읽기
         scan_bytes = await scan.read()
 
         # 템플릿 이미지 읽기
-        template_bytes = None
         if template:
             template_bytes = await template.read()
         elif method == "sift":
@@ -118,6 +124,16 @@ async def detect_answers(
             status_code=500,
             detail=f"답안 검출 중 오류가 발생했습니다: {str(e)}"
         )
+    finally:
+        # 메모리 정리
+        if scan_bytes is not None:
+            del scan_bytes
+        if template_bytes is not None:
+            del template_bytes
+        if aligned_bytes is not None:
+            del aligned_bytes
+        if aligned_img is not None:
+            del aligned_img
 
 
 @router.post("/")
@@ -143,6 +159,11 @@ async def grade_exam(
     **Returns:**
     - JSON 형식의 채점 결과
     """
+    scan_bytes = None
+    template_bytes = None
+    aligned_bytes = None
+    aligned_img = None
+
     try:
         # 정답 파싱
         try:
@@ -159,7 +180,6 @@ async def grade_exam(
         scan_bytes = await scan.read()
 
         # 템플릿 이미지 읽기
-        template_bytes = None
         if template:
             template_bytes = await template.read()
         elif method == "sift":
@@ -215,6 +235,16 @@ async def grade_exam(
             status_code=500,
             detail=f"채점 중 오류가 발생했습니다: {str(e)}"
         )
+    finally:
+        # 메모리 정리
+        if scan_bytes is not None:
+            del scan_bytes
+        if template_bytes is not None:
+            del template_bytes
+        if aligned_bytes is not None:
+            del aligned_bytes
+        if aligned_img is not None:
+            del aligned_img
 
 
 @router.post("/batch")
@@ -227,10 +257,10 @@ async def grade_exams_batch(
     score_per_question: float = Form(1.0, description="문제당 배점")
 ):
     """
-    여러 OMR 답안지를 배치로 채점
+    여러 OMR 답안지를 배치로 채점 (최대 100장)
 
     **Parameters:**
-    - **scans**: 스캔된 시험지 이미지들 (여러 개)
+    - **scans**: 스캔된 시험지 이미지들 (최대 100개)
     - **answer_key**: 정답 리스트 JSON 배열
     - **template**: 기준 템플릿 (선택사항)
     - **method**: 정렬 방식
@@ -239,8 +269,19 @@ async def grade_exams_batch(
 
     **Returns:**
     - JSON 형식의 배치 채점 결과
+
+    **Notes:**
+    - 메모리 효율을 위해 각 이미지는 순차적으로 처리되며 처리 후 즉시 메모리에서 해제됩니다
+    - 결과에는 채점 정보만 포함되며 이미지 바이트는 저장되지 않습니다
     """
     try:
+        # 배치 크기 제한 (메모리 보호)
+        MAX_BATCH_SIZE = 100
+        if len(scans) > MAX_BATCH_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"배치 크기는 최대 {MAX_BATCH_SIZE}개까지 가능합니다 (현재: {len(scans)}개)"
+            )
         # 정답 파싱
         try:
             answer_key_list = json.loads(answer_key)
@@ -264,9 +305,17 @@ async def grade_exams_batch(
                 )
             template_bytes = DEFAULT_TEMPLATE_PATH.read_bytes()
 
+        # 배치 시작 전 메모리 상태
+        log_memory_usage("[배치 채점 시작] ")
+
         results = []
         for idx, scan in enumerate(scans):
+            scan_bytes = None
+            aligned_bytes = None
+            aligned_img = None
+
             try:
+                # 스캔 이미지 읽기
                 scan_bytes = await scan.read()
 
                 # 이미지 정렬
@@ -289,7 +338,7 @@ async def grade_exams_batch(
                 # OpenCV 이미지로 변환
                 aligned_img = bytes_to_cv2(aligned_bytes)
 
-                # 채점
+                # 채점 수행
                 grading_result = grade_omr_sheet(
                     aligned_img,
                     answer_key_list,
@@ -297,6 +346,7 @@ async def grade_exams_batch(
                     score_per_question
                 )
 
+                # 결과 저장 (이미지 바이트는 제외, 채점 결과만 저장)
                 results.append({
                     "index": idx,
                     "filename": scan.filename,
@@ -315,6 +365,25 @@ async def grade_exams_batch(
                     "success": False,
                     "error": str(e)
                 })
+
+            finally:
+                # 메모리 효율: 각 이미지 처리 후 즉시 큰 변수 해제
+                if scan_bytes is not None:
+                    del scan_bytes
+                if aligned_bytes is not None:
+                    del aligned_bytes
+                if aligned_img is not None:
+                    del aligned_img
+
+                # 10장마다 가비지 컬렉션 수행 (메모리 회수)
+                if (idx + 1) % 10 == 0:
+                    gc.collect()
+                    log_memory_usage(f"[배치 채점 진행 {idx + 1}/{len(scans)}] ")
+
+        # 최종 메모리 정리
+        gc.collect()
+        log_memory_usage("[배치 채점 완료] ")
+        logger.info(f"배치 채점 완료 - 최종 메모리 정리 수행")
 
         # 통계 계산
         successful = sum(1 for r in results if r.get("success", False))

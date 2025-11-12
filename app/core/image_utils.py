@@ -8,33 +8,57 @@ from PIL import Image
 import io
 
 
-def bytes_to_cv2(image_bytes: bytes) -> np.ndarray:
+def bytes_to_cv2(image_bytes: bytes, max_dimension: int = 800) -> np.ndarray:
     """
     바이트 데이터를 OpenCV 이미지로 변환
+    메모리 절약을 위해 큰 이미지는 자동으로 리사이즈
 
     Args:
         image_bytes: 이미지 바이트 데이터
+        max_dimension: 최대 이미지 크기 (기본값: 800px, 512MB 메모리 극한 최적화)
 
     Returns:
         OpenCV 이미지 (numpy array)
     """
     nparr = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+    if img is None:
+        return None
+
+    # 메모리 절약: 큰 이미지는 리사이즈 (512MB 메모리 제한 고려)
+    h, w = img.shape[:2]
+    if max(h, w) > max_dimension:
+        scale = max_dimension / max(h, w)
+        new_w = int(w * scale)
+        new_h = int(h * scale)
+        # INTER_AREA: 축소 시 가장 좋은 품질
+        img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
     return img
 
 
-def cv2_to_bytes(img: np.ndarray, format: str = '.png') -> bytes:
+def cv2_to_bytes(img: np.ndarray, format: str = '.jpg', quality: int = 85) -> bytes:
     """
     OpenCV 이미지를 바이트 데이터로 변환
 
     Args:
         img: OpenCV 이미지
-        format: 출력 포맷 (기본값: .png)
+        format: 출력 포맷 (기본값: .jpg, 메모리 효율)
+        quality: JPEG 품질 (1-100, 기본값: 85)
 
     Returns:
         이미지 바이트 데이터
     """
-    is_success, buffer = cv2.imencode(format, img)
+    # JPEG 압축 파라미터 설정 (메모리 효율)
+    encode_params = []
+    if format.lower() in ['.jpg', '.jpeg']:
+        encode_params = [cv2.IMWRITE_JPEG_QUALITY, quality]
+    elif format.lower() == '.png':
+        # PNG는 압축 레벨 설정 (0-9, 높을수록 압축률 높음)
+        encode_params = [cv2.IMWRITE_PNG_COMPRESSION, 6]
+
+    is_success, buffer = cv2.imencode(format, img, encode_params)
     if not is_success:
         raise ValueError("이미지 인코딩 실패")
     return buffer.tobytes()
@@ -44,7 +68,8 @@ def align_with_sift(
     scan_img: np.ndarray,
     template_img: np.ndarray,
     ratio_threshold: float = 0.7,
-    min_good_matches: int = 10
+    min_good_matches: int = 10,
+    max_features: int = 150
 ) -> Tuple[Optional[np.ndarray], int]:
     """
     SIFT + FLANN + Homography를 이용한 이미지 정렬
@@ -54,6 +79,7 @@ def align_with_sift(
         template_img: 기준 템플릿 이미지
         ratio_threshold: Lowe's ratio test 임계값 (기본값: 0.7)
         min_good_matches: 최소 유효 매칭 수 (기본값: 10)
+        max_features: 최대 특징점 수 (기본값: 150, 512MB 메모리 극한 최적화)
 
     Returns:
         (정렬된 이미지, 매칭 개수) 튜플. 실패 시 (None, 0)
@@ -62,8 +88,8 @@ def align_with_sift(
     gray_scan = cv2.cvtColor(scan_img, cv2.COLOR_BGR2GRAY)
     gray_template = cv2.cvtColor(template_img, cv2.COLOR_BGR2GRAY)
 
-    # SIFT 특징점 검출
-    sift = cv2.SIFT_create()
+    # SIFT 특징점 검출 (150개로 제한하여 극한 메모리 절약)
+    sift = cv2.SIFT_create(nfeatures=max_features)
     kp1, des1 = sift.detectAndCompute(gray_scan, None)
     kp2, des2 = sift.detectAndCompute(gray_template, None)
 
@@ -193,34 +219,39 @@ def align_with_contour(
     return warped
 
 
-def enhance_image(img: np.ndarray) -> np.ndarray:
+def enhance_image(img: np.ndarray, denoise: bool = False) -> np.ndarray:
     """
-    이미지 품질 향상 (대비 개선, 노이즈 제거)
+    이미지 품질 향상 (대비 개선, 선택적 노이즈 제거)
+    메모리 효율을 위해 in-place 연산 최대화
 
     Args:
         img: 입력 이미지
+        denoise: 노이즈 제거 여부 (메모리 많이 사용, 기본값: False)
 
     Returns:
         개선된 이미지
     """
+    is_color = len(img.shape) == 3
+
     # 그레이스케일 변환
-    if len(img.shape) == 3:
+    if is_color:
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     else:
-        gray = img.copy()
+        gray = img
 
-    # CLAHE (Contrast Limited Adaptive Histogram Equalization) 적용
+    # CLAHE 적용 (메모리 효율적)
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     enhanced = clahe.apply(gray)
 
-    # 노이즈 제거
-    denoised = cv2.fastNlMeansDenoising(enhanced, None, 10, 7, 21)
+    # 노이즈 제거 (선택적, 메모리 많이 사용)
+    if denoise:
+        enhanced = cv2.fastNlMeansDenoising(enhanced, None, 10, 7, 21)
 
     # 컬러 이미지로 변환 (필요 시)
-    if len(img.shape) == 3:
-        result = cv2.cvtColor(denoised, cv2.COLOR_GRAY2BGR)
+    if is_color:
+        result = cv2.cvtColor(enhanced, cv2.COLOR_GRAY2BGR)
     else:
-        result = denoised
+        result = enhanced
 
     return result
 
@@ -289,9 +320,9 @@ def align_scan_to_template(
         metadata["success"] = False
         metadata["message"] = "정렬 실패. 원본 이미지를 반환합니다."
 
-    # 이미지 품질 개선
+    # 이미지 품질 개선 (메모리 절약을 위해 denoise는 기본 비활성화)
     if enhance and metadata["success"]:
-        aligned_img = enhance_image(aligned_img)
+        aligned_img = enhance_image(aligned_img, denoise=False)
         metadata["enhanced"] = True
 
     # 메타데이터 추가

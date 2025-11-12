@@ -9,7 +9,10 @@
       "Bash(tree:*)",
       "Bash(curl:*)",
       "Bash(python -m json.tool:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []
