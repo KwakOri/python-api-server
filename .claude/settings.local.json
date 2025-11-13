@@ -18,7 +18,10 @@
       "WebFetch(domain:sdk.sendon.io)",
       "WebSearch",
       "Bash(lsof:*)",
-      "Bash(xargs kill:*)"
+      "Bash(xargs kill:*)",
+      "Bash(sort:*)",
+      "Bash(find:*)",
+      "Bash(git ls-tree:*)"
     ],
     "deny": [],
     "ask": []
