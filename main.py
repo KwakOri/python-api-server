@@ -114,18 +114,7 @@ async def root():
             "grade": "/api/grade",
             "grade_batch": "/api/grade/batch"
         },
-        "features": {
-            "alignment": {
-                "sift": "SIFT + Homography (고정확도, 템플릿 자동 사용)",
-                "contour": "Contour Detection (고속, 템플릿 불필요)"
-            },
-            "grading": {
-                "total_questions": 45,
-                "options_per_question": 5,
-                "auto_detect": "마킹 자동 검출",
-                "auto_grade": "정답 비교 자동 채점"
-            }
-        }
+        "features": "OMR 기반 마킹 추출 및 분석"
     }
 
 
