@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: zuku-exam-server
+    restart: always
+    ports:
+      - "8080:8080"
+    volumes:
+      # 업로드된 파일이 있다면 볼륨 마운트
+      - ./uploads:/app/uploads
+    environment:
+      # Python 최적화
+      - PYTHONUNBUFFERED=1
+      - PYTHONOPTIMIZE=1
+      # 환경 변수 (.env 파일 사용)
+      - PORT=8080
+    env_file:
+      - .env
+    # 메모리 제한 (1GB RAM 서버용)
+    deploy:
+      resources:
+        limits:
+          memory: 700M  # Docker 자체 메모리 제한
+        reservations:
+          memory: 300M
+    # 헬스체크
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    # 로그 제한 (디스크 절약)
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

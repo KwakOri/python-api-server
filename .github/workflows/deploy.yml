@@ -1,0 +1,47 @@
+name: Deploy to Vultr
+
+on:
+  push:
+    branches:
+      - main  # main 브랜치에 push 시 자동 배포
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Vultr Server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            echo "=== 배포 시작 ==="
+            cd /opt/zuku-exam-server
+
+            # Git Pull
+            echo "=== Git Pull ==="
+            sudo git fetch origin
+            sudo git pull origin main
+
+            # Docker Compose 재시작
+            echo "=== Docker 재시작 ==="
+            sudo docker compose down
+            sudo docker compose up -d --build
+
+            # 헬스체크 대기
+            echo "=== 헬스체크 중 ==="
+            sleep 10
+
+            # 상태 확인
+            sudo docker compose ps
+
+            # API 헬스체크
+            curl -f http://localhost:8080/health || exit 1
+
+            echo "=== 배포 완료! ==="
+            echo "시간: $(date)"

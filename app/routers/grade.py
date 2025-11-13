@@ -10,6 +10,8 @@ import gc
 from app.core.image_utils import bytes_to_cv2, align_scan_to_template
 from app.core.omr_utils import detect_bubbles, grade_omr_sheet
 from app.core.memory_monitor import log_memory_usage
+from app.core.processing_limiter import limiter
+from app.core.logging_config import log_api_call
 from pathlib import Path
 
 # 로거 설정
@@ -39,6 +41,7 @@ async def health_check():
 
 
 @router.post("/detect")
+@log_api_call("답안 검출")
 async def detect_answers(
     scan: UploadFile = File(..., description="스캔된 시험지 이미지"),
     template: Optional[UploadFile] = File(None, description="기준 템플릿 이미지"),
@@ -77,27 +80,32 @@ async def detect_answers(
                 )
             template_bytes = DEFAULT_TEMPLATE_PATH.read_bytes()
 
-        # 이미지 정렬
-        logger.info(f"이미지 정렬 시작 - 방식: {method}")
-        aligned_bytes, metadata = align_scan_to_template(
-            scan_bytes=scan_bytes,
-            template_bytes=template_bytes,
-            method=method,
-            enhance=True
-        )
+        # 이미지 정렬 및 답안 검출 (순차 처리로 메모리 최적화)
+        logger.info(f"이미지 정렬 및 답안 검출 시작 - 방식: {method}, 임계값: {threshold}")
 
-        if not metadata.get("success"):
-            raise HTTPException(
-                status_code=400,
-                detail="이미지 정렬에 실패했습니다"
+        # 실제 처리 함수
+        def process_detection():
+            # 이미지 정렬
+            aligned_bytes_result, metadata_result = align_scan_to_template(
+                scan_bytes=scan_bytes,
+                template_bytes=template_bytes,
+                method=method,
+                enhance=True
             )
 
-        # OpenCV 이미지로 변환
-        aligned_img = bytes_to_cv2(aligned_bytes)
+            if not metadata_result.get("success"):
+                raise ValueError("이미지 정렬에 실패했습니다")
 
-        # 답안 검출
-        logger.info(f"답안 검출 시작 - 임계값: {threshold}")
-        detected_answers = detect_bubbles(aligned_img, threshold)
+            # OpenCV 이미지로 변환
+            aligned_img_result = bytes_to_cv2(aligned_bytes_result)
+
+            # 답안 검출
+            detected_answers_result = detect_bubbles(aligned_img_result, threshold)
+
+            return aligned_bytes_result, metadata_result, detected_answers_result
+
+        # limiter를 통한 순차 처리
+        aligned_bytes, metadata, detected_answers = await limiter.process_with_limit(process_detection)
 
         # 응답 생성
         answered_count = sum(1 for v in detected_answers.values() if v is not None)
@@ -137,6 +145,7 @@ async def detect_answers(
 
 
 @router.post("/")
+@log_api_call("자동 채점")
 async def grade_exam(
     scan: UploadFile = File(..., description="스캔된 시험지 이미지"),
     answer_key: str = Form(..., description="정답 리스트 JSON 배열 (45개, 1-indexed)"),
@@ -190,32 +199,37 @@ async def grade_exam(
                 )
             template_bytes = DEFAULT_TEMPLATE_PATH.read_bytes()
 
-        # 이미지 정렬
-        logger.info(f"이미지 정렬 시작 - 방식: {method}")
-        aligned_bytes, metadata = align_scan_to_template(
-            scan_bytes=scan_bytes,
-            template_bytes=template_bytes,
-            method=method,
-            enhance=True
-        )
+        # 이미지 정렬 및 채점 (순차 처리로 메모리 최적화)
+        logger.info(f"이미지 정렬 및 채점 시작 - 방식: {method}, 임계값: {threshold}, 배점: {score_per_question}")
 
-        if not metadata.get("success"):
-            raise HTTPException(
-                status_code=400,
-                detail="이미지 정렬에 실패했습니다"
+        # 실제 처리 함수
+        def process_grading():
+            # 이미지 정렬
+            aligned_bytes_result, metadata_result = align_scan_to_template(
+                scan_bytes=scan_bytes,
+                template_bytes=template_bytes,
+                method=method,
+                enhance=True
             )
 
-        # OpenCV 이미지로 변환
-        aligned_img = bytes_to_cv2(aligned_bytes)
+            if not metadata_result.get("success"):
+                raise ValueError("이미지 정렬에 실패했습니다")
 
-        # 채점
-        logger.info(f"채점 시작 - 임계값: {threshold}, 배점: {score_per_question}")
-        grading_result = grade_omr_sheet(
-            aligned_img,
-            answer_key_list,
-            threshold,
-            score_per_question
-        )
+            # OpenCV 이미지로 변환
+            aligned_img_result = bytes_to_cv2(aligned_bytes_result)
+
+            # 채점
+            grading_result = grade_omr_sheet(
+                aligned_img_result,
+                answer_key_list,
+                threshold,
+                score_per_question
+            )
+
+            return metadata_result, grading_result
+
+        # limiter를 통한 순차 처리
+        metadata, grading_result = await limiter.process_with_limit(process_grading)
 
         return {
             "success": True,
@@ -248,6 +262,7 @@ async def grade_exam(
 
 
 @router.post("/batch")
+@log_api_call("배치 자동 채점")
 async def grade_exams_batch(
     scans: List[UploadFile] = File(..., description="스캔된 시험지 이미지들"),
     answer_key: str = Form(..., description="정답 리스트 JSON 배열 (45개)"),

@@ -12,6 +12,7 @@ from app.routers import align, grade
 from app.core.auth import APIKeyMiddleware
 from app.middleware.memory_middleware import MemoryLoggingMiddleware
 from app.core.memory_monitor import log_system_memory
+from app.core.processing_limiter import limiter
 
 # 로깅 설정
 logging.basicConfig(
@@ -136,6 +137,21 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "exam-alignment-api"
+    }
+
+
+@app.get("/queue/status")
+async def queue_status():
+    """
+    대기열 상태 확인 엔드포인트
+    """
+    status = limiter.get_status()
+    return {
+        "status": "ok",
+        "processing": status["processing"],
+        "waiting": status["waiting"],
+        "max_queue_size": status["max_queue_size"],
+        "available": status["waiting"] < status["max_queue_size"]
     }
 
 

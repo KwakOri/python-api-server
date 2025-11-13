@@ -10,6 +10,8 @@ from pathlib import Path
 
 from app.core.image_utils import align_scan_to_template
 from app.core.memory_monitor import log_memory_usage
+from app.core.processing_limiter import limiter
+from app.core.logging_config import log_api_call
 
 # 로거 설정
 logger = logging.getLogger(__name__)
@@ -37,6 +39,7 @@ async def health_check():
 
 
 @router.post("/")
+@log_api_call("이미지 정렬")
 async def align_image(
     scan: UploadFile = File(..., description="스캔된 시험지 이미지"),
     template: Optional[UploadFile] = File(None, description="기준 템플릿 이미지 (SIFT 방식에 필요)"),
@@ -103,14 +106,20 @@ async def align_image(
                 detail="method는 'sift' 또는 'contour'여야 합니다"
             )
 
-        # 이미지 정렬 수행
+        # 이미지 정렬 수행 (순차 처리로 메모리 최적화)
         logger.info(f"이미지 정렬 시작 - 방식: {method}, 품질개선: {enhance}")
-        aligned_bytes, metadata = align_scan_to_template(
-            scan_bytes=scan_bytes,
-            template_bytes=template_bytes,
-            method=method,
-            enhance=enhance
-        )
+
+        # 실제 처리 함수
+        def process_alignment():
+            return align_scan_to_template(
+                scan_bytes=scan_bytes,
+                template_bytes=template_bytes,
+                method=method,
+                enhance=enhance
+            )
+
+        # limiter를 통한 순차 처리
+        aligned_bytes, metadata = await limiter.process_with_limit(process_alignment)
 
         # 결과 반환
         if return_image:
@@ -154,6 +163,7 @@ async def align_image(
 
 
 @router.post("/batch")
+@log_api_call("배치 이미지 정렬")
 async def align_images_batch(
     scans: list[UploadFile] = File(..., description="스캔된 시험지 이미지들"),
     template: Optional[UploadFile] = File(None, description="기준 템플릿 이미지"),
