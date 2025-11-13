@@ -1,0 +1,16 @@
+{
+  "sendProfileId": "231edu",
+  "templateId": "351J9e9RAH1GdhPQGVgM8HFpBgA",
+  "to": [
+    {
+      "phone": "01055952289",
+      "variables": {
+        "#{report_id}": "1000",
+        "#{student_id}": "1000",
+        "#{student}": "김국어",
+        "#{start_date}": "2025-11-10",
+        "#{end_date}": "2025-11-16"
+      }
+    }
+  ]
+}

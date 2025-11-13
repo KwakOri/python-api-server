@@ -5,10 +5,13 @@ FastAPI 애플리케이션 진입점
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import APIKeyHeader
+from fastapi.openapi.docs import get_swagger_ui_html
+from contextlib import asynccontextmanager
 import logging
 import sys
 
-from app.routers import align, grade
+from app.routers import align, grade, alimtok
 from app.core.auth import APIKeyMiddleware
 from app.middleware.memory_middleware import MemoryLoggingMiddleware
 from app.core.memory_monitor import log_system_memory
@@ -31,11 +34,46 @@ logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
 
 logger = logging.getLogger(__name__)
 
+
+# Lifespan 이벤트 핸들러
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    애플리케이션 라이프사이클 관리
+    시작 시 초기화, 종료 시 정리 작업 수행
+    """
+    # 시작 시 실행
+    logger.info("=" * 50)
+    logger.info("시험지 정렬 및 채점 API 서버 시작")
+    logger.info("=" * 50)
+    logger.info("API 문서: http://localhost:8080/docs")
+    logger.info("=" * 50)
+    # 시스템 메모리 정보 출력
+    log_system_memory()
+    logger.info("=" * 50)
+
+    yield  # 애플리케이션 실행
+
+    # 종료 시 실행
+    logger.info("서버 종료 중...")
+
+
+# API 키 헤더 정의 (Swagger UI용)
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
 # FastAPI 앱 생성
 app = FastAPI(
+    lifespan=lifespan,
     title="시험지 정렬 및 채점 API",
     description="""
     스캔된 시험지 이미지를 정렬하고 채점하기 위한 API 서버입니다.
+
+    ## 인증 방법
+
+    POST 요청은 API 키 인증이 필요합니다. Swagger UI 우측 상단의 **Authorize** 버튼을 클릭하여 API 키를 입력하세요.
+
+    - 헤더명: `X-API-Key`
+    - 값: `.env` 파일의 `API_KEY` 값
 
     ## 주요 기능
 
@@ -44,6 +82,7 @@ app = FastAPI(
     * **이미지 품질 개선**: CLAHE 및 노이즈 제거
     * **OMR 마킹 검출**: 45문항 5지선다형 답안 자동 검출
     * **자동 채점**: 정답과 비교하여 자동 채점 및 통계 제공
+    * **알림톡 발송**: 센드온 API를 통한 카카오 알림톡 메시지 발송
 
     ## 정렬 방식
 
@@ -71,11 +110,60 @@ app = FastAPI(
     - 중복 마킹 처리
     - 무응답 검출
     - 정답률 통계 제공
+
+    ## 알림톡 발송
+
+    ### 사전 준비사항
+    - 카카오 비즈니스 채널 생성 및 연동
+    - 알림톡 템플릿 등록 및 승인 완료
+    - 센드온 API 키 설정 (환경 변수 `SENDON_API_KEY`)
+
+    ### 기능
+    - 최대 1,000명 동시 발송
+    - 템플릿 변수 치환
+    - 예약 발송
+    - 대체문자 설정 (SMS/LMS/MMS)
     """,
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    swagger_ui_parameters={
+        "persistAuthorization": True  # API 키를 브라우저에 저장
+    }
 )
+
+# OpenAPI 스키마에 보안 설정 추가
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    from fastapi.openapi.utils import get_openapi
+
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+
+    # API Key 보안 스키마 추가
+    openapi_schema["components"]["securitySchemes"] = {
+        "APIKeyHeader": {
+            "type": "apiKey",
+            "in": "header",
+            "name": "X-API-Key",
+            "description": "API 키를 입력하세요. POST 요청에 필요합니다."
+        }
+    }
+
+    # 기본 보안 설정 (모든 엔드포인트에 적용)
+    # 실제 인증은 미들웨어에서 처리하므로 UI에만 표시
+    openapi_schema["security"] = [{"APIKeyHeader": []}]
+
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
 
 # CORS 설정
 app.add_middleware(
@@ -93,6 +181,7 @@ app.add_middleware(MemoryLoggingMiddleware)
 # 라우터 등록
 app.include_router(align.router)
 app.include_router(grade.router)
+app.include_router(alimtok.router)
 
 
 @app.get("/")
@@ -112,9 +201,11 @@ async def root():
             "align_batch": "/api/align/batch",
             "grade_detect": "/api/grade/detect",
             "grade": "/api/grade",
-            "grade_batch": "/api/grade/batch"
+            "grade_batch": "/api/grade/batch",
+            "alimtok_send": "/api/alimtok/send",
+            "alimtok_health": "/api/alimtok/health"
         },
-        "features": "OMR 기반 마킹 추출 및 분석"
+        "features": "OMR 기반 마킹 추출 및 분석, 알림톡 메시지 발송"
     }
 
 
@@ -158,31 +249,6 @@ async def global_exception_handler(request, exc):
             "detail": str(exc)
         }
     )
-
-
-# 애플리케이션 시작 이벤트
-@app.on_event("startup")
-async def startup_event():
-    """
-    서버 시작 시 실행
-    """
-    logger.info("=" * 50)
-    logger.info("시험지 정렬 및 채점 API 서버 시작")
-    logger.info("=" * 50)
-    logger.info("API 문서: http://localhost:8080/docs")
-    logger.info("=" * 50)
-    # 시스템 메모리 정보 출력
-    log_system_memory()
-    logger.info("=" * 50)
-
-
-# 애플리케이션 종료 이벤트
-@app.on_event("shutdown")
-async def shutdown_event():
-    """
-    서버 종료 시 실행
-    """
-    logger.info("서버 종료 중...")
 
 
 if __name__ == "__main__":
