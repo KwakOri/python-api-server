@@ -1,0 +1,32 @@
+[DEFAULT]
+# 기본 설정
+bantime = 3600          # 1시간 차단
+findtime = 600          # 10분 안에
+maxretry = 5            # 5번 실패 시
+
+# 이메일 알림 (선택사항 - 이메일 주소 변경 필요)
+# destemail = your-email@example.com
+# sender = fail2ban@exam.231edu.cloud
+# action = %(action_mwl)s
+
+[sshd]
+enabled = true
+port = 22
+logpath = /var/log/auth.log
+maxretry = 3            # SSH는 더 엄격하게
+
+[nginx-http-auth]
+enabled = true
+port = http,https
+logpath = /var/log/nginx/zuku-exam-error.log
+
+[nginx-limit-req]
+enabled = true
+port = http,https
+logpath = /var/log/nginx/zuku-exam-error.log
+maxretry = 10
+
+[nginx-noscript]
+enabled = true
+port = http,https
+logpath = /var/log/nginx/zuku-exam-access.log
