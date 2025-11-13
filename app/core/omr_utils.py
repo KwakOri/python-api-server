@@ -138,19 +138,17 @@ def detect_bubbles(
 
     img_height, img_width = gray.shape
     answers = {}
+    multiple_marked_questions = []  # 중복 마킹된 문제 번호 저장
 
     # 45개 문제 순회
     for question in range(1, 46):
         marked_options = []
-        all_densities = []  # 모든 선택지의 어두움 비율 저장
 
         # 5개 선택지 순회
         for option in range(1, 6):
             try:
                 x, y, width, height = get_bubble_roi(img_height, img_width, question, option)
                 is_marked, density = is_bubble_marked(gray, x, y, width, height, threshold)
-
-                all_densities.append((option, density))
 
                 if is_marked:
                     marked_options.append((option, density))
@@ -167,17 +165,14 @@ def detect_bubbles(
             answers[question] = marked_options[0][0]
             logger.debug(f"문제 {question}: {marked_options[0][0]}번 마킹 (어두움: {marked_options[0][1]:.3f})")
         else:
-            # 중복 마킹 - 가장 어두운 것 선택 (또는 None 처리 가능)
+            # 중복 마킹 - 가장 어두운 것 선택
             marked_options.sort(key=lambda x: x[1], reverse=True)
             answers[question] = marked_options[0][0]
+            multiple_marked_questions.append(question)
 
-            # 중복 마킹된 선택지들의 어두움 비율 표시
-            marked_details = ", ".join([f"{opt}번:{density:.3f}" for opt, density in marked_options])
-            # 모든 선택지의 어두움 비율 표시
-            all_details = ", ".join([f"{opt}:{density:.3f}" for opt, density in all_densities])
-
-            logger.warning(f"문제 {question}: 중복 마킹 감지 - 마킹됨:[{marked_details}] | "
-                          f"전체:[{all_details}] | 선택: {marked_options[0][0]}번")
+    # 중복 마킹 요약 출력
+    if multiple_marked_questions:
+        logger.warning(f"⚠️ 중복 마킹 문제 감지: 총 {len(multiple_marked_questions)}개 (문제 번호: {multiple_marked_questions})")
 
     return answers
 
