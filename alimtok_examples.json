@@ -1,0 +1,173 @@
+{
+  "examples": {
+    "1. 기본 발송 (변수 없음)": {
+      "description": "가장 단순한 형태의 알림톡 발송. 변수가 없는 템플릿에 사용",
+      "request": {
+        "sendProfileId": "your-channel-id",
+        "templateId": "your-template-id",
+        "to": [
+          "01012345678",
+          "01087654321"
+        ]
+      }
+    },
+
+    "2. 변수 포함 발송": {
+      "description": "템플릿에 변수가 있는 경우. 예: '#{고객명}님 안녕하세요'",
+      "request": {
+        "sendProfileId": "your-channel-id",
+        "templateId": "your-template-id",
+        "to": [
+          {
+            "phone": "01012345678",
+            "variables": {
+              "#{고객명}": "홍길동",
+              "#{날짜}": "2024-01-01",
+              "#{시간}": "10:00"
+            }
+          },
+          {
+            "phone": "01087654321",
+            "variables": {
+              "#{고객명}": "김철수",
+              "#{날짜}": "2024-01-02",
+              "#{시간}": "14:00"
+            }
+          }
+        ]
+      }
+    },
+
+    "3. 예약 발송": {
+      "description": "특정 시간에 발송되도록 예약",
+      "request": {
+        "sendProfileId": "your-channel-id",
+        "templateId": "your-template-id",
+        "to": ["01012345678"],
+        "reservation": {
+          "reservedAt": "2024-12-25T09:00:00+09:00"
+        }
+      }
+    },
+
+    "4. 대체문자 - TEMPLATE 사용": {
+      "description": "센드온에 등록한 템플릿의 대체문자 설정 사용 (알림톡만 가능)",
+      "request": {
+        "sendProfileId": "your-channel-id",
+        "templateId": "your-template-id",
+        "to": ["01012345678"],
+        "fallback": {
+          "fallbackType": "TEMPLATE"
+        }
+      }
+    },
+
+    "5. 대체문자 - SMS 커스텀": {
+      "description": "알림톡 실패 시 SMS로 대체 발송",
+      "request": {
+        "sendProfileId": "your-channel-id",
+        "templateId": "your-template-id",
+        "to": ["01012345678"],
+        "fallback": {
+          "fallbackType": "CUSTOM",
+          "custom": {
+            "type": "SMS",
+            "senderNumber": "02-1234-5678",
+            "message": "알림톡 발송이 실패하여 문자로 발송합니다. (최대 90바이트)",
+            "isAd": false
+          }
+        }
+      }
+    },
+
+    "6. 대체문자 - LMS 커스텀": {
+      "description": "알림톡 실패 시 LMS(긴 문자)로 대체 발송",
+      "request": {
+        "sendProfileId": "your-channel-id",
+        "templateId": "your-template-id",
+        "to": ["01012345678"],
+        "fallback": {
+          "fallbackType": "CUSTOM",
+          "custom": {
+            "type": "LMS",
+            "senderNumber": "02-1234-5678",
+            "title": "알림",
+            "message": "알림톡 발송이 실패하여 문자로 발송합니다.\n\n자세한 내용은 다음과 같습니다.\n1. 항목1\n2. 항목2\n\n감사합니다. (최대 2000바이트)",
+            "isAd": false
+          }
+        }
+      }
+    },
+
+    "7. 대체문자 - MMS 커스텀": {
+      "description": "알림톡 실패 시 MMS(이미지 포함 문자)로 대체 발송. 이미지는 사전에 업로드 필요",
+      "request": {
+        "sendProfileId": "your-channel-id",
+        "templateId": "your-template-id",
+        "to": ["01012345678"],
+        "fallback": {
+          "fallbackType": "CUSTOM",
+          "custom": {
+            "type": "MMS",
+            "senderNumber": "02-1234-5678",
+            "title": "이미지 포함 안내",
+            "message": "알림톡 발송이 실패하여 이미지와 함께 문자로 발송합니다.",
+            "isAd": false,
+            "images": ["image-id-1", "image-id-2"]
+          }
+        }
+      }
+    },
+
+    "8. 포인트 우선 사용": {
+      "description": "크레딧 대신 포인트를 먼저 사용하도록 설정 (기본값: 크레딧 우선)",
+      "request": {
+        "sendProfileId": "your-channel-id",
+        "templateId": "your-template-id",
+        "to": ["01012345678"],
+        "useCredit": false
+      }
+    },
+
+    "9. 완전한 예제 (모든 옵션 포함)": {
+      "description": "예약 발송 + 변수 치환 + 대체문자 설정",
+      "request": {
+        "sendProfileId": "your-channel-id",
+        "templateId": "your-template-id",
+        "to": [
+          {
+            "phone": "01012345678",
+            "variables": {
+              "#{고객명}": "홍길동",
+              "#{예약일시}": "2024년 1월 1일 10:00"
+            }
+          }
+        ],
+        "reservation": {
+          "reservedAt": "2024-01-01T09:00:00+09:00"
+        },
+        "useCredit": true,
+        "fallback": {
+          "fallbackType": "CUSTOM",
+          "custom": {
+            "type": "LMS",
+            "senderNumber": "02-1234-5678",
+            "title": "예약 확인",
+            "message": "[홍길동]님의 예약이 확정되었습니다.\n\n예약일시: 2024년 1월 1일 10:00\n\n감사합니다.",
+            "isAd": false
+          }
+        }
+      }
+    }
+  },
+
+  "참고사항": {
+    "채널ID_템플릿ID_확인방법": "센드온 콘솔(https://console.sendon.io)에서 확인 가능",
+    "전화번호_형식": "하이픈(-) 없이 숫자만 입력 (예: 01012345678)",
+    "최대_수신자수": "한 번에 최대 1,000명까지 발송 가능",
+    "템플릿_변수": "템플릿에 정의된 변수명과 정확히 일치해야 함 (예: #{고객명})",
+    "예약_시간_형식": "ISO 8601 형식 (예: 2024-01-01T09:00:00+09:00)",
+    "대체문자_이미지": "MMS 이미지는 사전에 센드온 API를 통해 업로드 필요",
+    "광고성_메시지": "광고성 메시지의 경우 isAd를 true로 설정하고 관련 법규 준수 필요"
+  }
+}
